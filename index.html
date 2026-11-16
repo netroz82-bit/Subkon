@@ -46,8 +46,6 @@ input{direction:ltr;letter-spacing:2px;text-align:left}
 textarea{width:100%;border:1px solid var(--l);background:#050a18;color:var(--t);border-radius:12px;padding:10px;font:inherit;font-size:15px;resize:none}
 #el{display:flex;flex-direction:column;gap:12px}#ok{position:sticky;bottom:0;box-shadow:0 0 0 10px #000}
 .x{border:0;background:none;color:var(--b);font-size:34px;width:44px;height:44px}
-.pst{font-size:11px;margin-right:8px;color:var(--m)}.pst.ok{color:#5be08a}.pst.bad{color:#ff7b8a}
-.hint{font-size:12px;color:var(--m);line-height:1.9;margin-top:8px}
 </style>
 </head>
 <body>
@@ -83,10 +81,8 @@ textarea{width:100%;border:1px solid var(--l);background:#050a18;color:var(--t);
 
 <div id="set" hidden>
   <header><h1>تنظیمات</h1><div class="sp"></div><button class="x" id="cl" aria-label="بستن">×</button></header>
-  <div><label>کلید API جمینای <span class="pst" id="s1"></span></label><input id="key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-  <div><label>کلید API گروک (Groq) <span class="pst" id="s2"></span></label><input id="gkey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-  <button class="btn" id="save" style="flex:none">ثبت کلیدها</button>
-  <div><label>موتور رونویسی</label><div class="opts" id="pm"><button data-v="auto">خودکار</button><button data-v="gemini">جمینای</button><button data-v="groq">گروک</button></div><div class="hint">در حالت خودکار، سریع‌ترین انتخاب می‌شود. در هر حالت اگر یکی قطع شود یا سهمیه‌اش تمام شود، برنامه خودکار به دیگری می‌رود.</div><div class="hint" id="ph"></div></div>
+  <div><label>کلید API جمینای</label><input id="key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+  <button class="btn" id="save" style="flex:none">ثبت کلید</button>
   <div><label>رنگ زیرنویس</label><div class="opts" id="co"><button data-v="#ff8a1f" style="background:#ff8a1f"></button><button data-v="#ffffff" style="background:#fff"></button><button data-v="#ffd60a" style="background:#ffd60a"></button><button data-v="#3fa0ff" style="background:#3fa0ff"></button></div></div>
   <div><label>اندازه زیرنویس</label><div class="opts" id="sg"><button data-v=".035">کوچک</button><button data-v=".05">متوسط</button><button data-v=".07">بزرگ</button></div></div>
   <canvas id="sp" width="640" height="360" style="width:100%;max-width:360px;align-self:center;border-radius:12px;border:1px solid var(--l)"></canvas>
@@ -101,9 +97,9 @@ textarea{width:100%;border:1px solid var(--l);background:#050a18;color:var(--t);
 <script>
 const $=s=>document.querySelector(s),B='https://generativelanguage.googleapis.com',sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const LANGS=[['fa','فارسی','Persian'],['en','انگلیسی','English'],['ar','عربی','Arabic'],['tr','ترکی استانبولی','Turkish'],['az','آذربایجانی','Azerbaijani'],['ku','کردی','Kurdish'],['ur','اردو','Urdu'],['hi','هندی','Hindi'],['bn','بنگالی','Bengali'],['fr','فرانسوی','French'],['de','آلمانی','German'],['es','اسپانیایی','Spanish'],['it','ایتالیایی','Italian'],['pt','پرتغالی','Portuguese'],['ru','روسی','Russian'],['uk','اوکراینی','Ukrainian'],['pl','لهستانی','Polish'],['nl','هلندی','Dutch'],['sv','سوئدی','Swedish'],['cs','چکی','Czech'],['ro','رومانیایی','Romanian'],['hu','مجاری','Hungarian'],['el','یونانی','Greek'],['he','عبری','Hebrew'],['zh','چینی','Chinese'],['ja','ژاپنی','Japanese'],['ko','کره‌ای','Korean'],['th','تایلندی','Thai'],['vi','ویتنامی','Vietnamese'],['id','اندونزیایی','Indonesian']];
-let key='',real='',lang='fa',file=null,url='',cues=[],srt='',busy=false,gkey='',greal='',mode='auto',SM={};
-try{lang=localStorage.getItem('sl')||'fa';key=localStorage.getItem('sk')||'';gkey=localStorage.getItem('gk')||'';mode=localStorage.getItem('sv')||'auto';SM=JSON.parse(localStorage.getItem('sm')||'{}')}catch(e){}
-real=key;greal=gkey;
+let key='',real='',lang='fa',file=null,url='',cues=[],srt='',busy=false;
+try{key=localStorage.getItem('sk')||'';lang=localStorage.getItem('sl')||'fa'}catch(e){}
+real=key;
 $('#lg').innerHTML=LANGS.map(l=>`<option value="${l[0]}">${l[1]}</option>`).join('');$('#lg').value=lang;
 $('#lg').onchange=e=>{lang=e.target.value;try{localStorage.setItem('sl',lang)}catch(x){}};
 let sc='#ffffff',sz='.05';
@@ -113,77 +109,20 @@ function pvw(){const x=$('#sp').getContext('2d'),v=$('#pv'),W=640,H=360,g=x.crea
   if(file&&v.videoWidth){const r=Math.max(W/v.videoWidth,H/v.videoHeight),w=v.videoWidth*r,h=v.videoHeight*r;try{x.drawImage(v,(W-w)/2,(H-h)/2,w,h)}catch(e){}}
   cap(x,'نمونه زیرنویس',W,H,Math.round(H*sz),true)}
 document.querySelectorAll('#co button,#sg button').forEach(b=>b.onclick=()=>{const c=b.parentNode.id=='co';if(c)sc=b.dataset.v;else sz=b.dataset.v;try{localStorage.setItem(c?'sc':'sz',c?sc:sz)}catch(e){}sty()});sty();
-function mk(el,get,set){const m=()=>{el.value='*'.repeat(get().length)};m();el.oninput=()=>{const v=el.value,r=get();let i=0;while(i<v.length&&i<r.length&&v[i]=='*')i++;set(r.slice(0,i)+v.slice(i));m()}}
-mk($('#key'),()=>real,v=>real=v);mk($('#gkey'),()=>greal,v=>greal=v);
+const ki=$('#key');
+const mask=()=>{ki.value='*'.repeat(real.length)};mask();
+ki.oninput=()=>{const v=ki.value;let i=0;while(i<v.length&&i<real.length&&v[i]=='*')i++;real=real.slice(0,i)+v.slice(i);mask()};
 function status(c,t){$('#st').className='st '+c;$('#stt').textContent=t}
-const PN={gemini:'جمینای',groq:'گروک'},CN={},DW={},RT={},PR={gemini:.12,groq:.04};
-const GB='https://api.groq.com/openai/v1',GSTT=['whisper-large-v3-turbo','whisper-large-v3'],GCHAT=['llama-3.3-70b-versatile','openai/gpt-oss-120b','openai/gpt-oss-20b','llama-3.1-8b-instant'],GM={stt:GSTT[0],chat:GCHAT[0]};
-let used={},sw=0,LP='';
-const E=(m,s)=>Object.assign(new Error(m),{st:s}),kf=p=>p=='groq'?gkey:key;
-function pickG(l){const d=(l||[]).filter(m=>m.active!==false).map(m=>m.id),x=/guard|whisper|tts|orpheus|compound|safeguard/;
-  GM.stt=GSTT.find(i=>d.includes(i))||d.find(i=>/whisper/.test(i)&&!/distil/.test(i))||GM.stt;
-  GM.chat=GCHAT.find(i=>d.includes(i))||d.find(i=>/llama|gpt-oss|qwen/.test(i)&&!x.test(i))||GM.chat}
-async function check(p){
-  const k=kf(p),lb=$(p=='groq'?'#s2':'#s1'),pt=(c,t)=>{lb.className='pst '+c;lb.textContent=t};
-  CN[p]=false;
-  if(!k){pt('','ثبت نشده');return false}
-  pt('','…');
-  try{const t=performance.now(),r=await(p=='groq'?fetch(GB+'/models',{headers:{Authorization:'Bearer '+k}}):fetch(B+'/v1beta/models?pageSize=1&key='+encodeURIComponent(k)));
-    if(r.ok){RT[p]=performance.now()-t;if(p=='groq')pickG((await r.json()).data);if(DW[p]>Date.now()+1e12)DW[p]=0;CN[p]=true;pt('ok','متصل');return true}
-    pt('bad',[400,401,403].includes(r.status)?'کلید نامعتبر یا مسدود':'خطا '+r.status)}
-  catch(e){pt('bad','عدم دسترسی به سرویس')}
+async function check(k){
+  if(!k){status('bad','قطع');return false}
+  status('','در حال بررسی…');
+  try{const r=await fetch(B+'/v1beta/models?pageSize=1&key='+encodeURIComponent(k));
+    if(r.ok){status('ok','متصل');return true}
+    status('bad','قطع')}catch(e){status('bad','قطع')}
   return false}
-async function checkAll(){status('','در حال بررسی…');const r=await Promise.all([check('gemini'),check('groq')]);Object.values(CN).includes(true)?status('ok','متصل'):status('bad','قطع');return r[0]||r[1]}
-const est=p=>SM[p]?SM[p].v:PR[p]+(RT[p]||0)/6e4,old=p=>!SM[p]||Date.now()-SM[p].t>1728e5,up=p=>kf(p)&&CN[p]!==false&&!(DW[p]>Date.now());
-function spd(){const a=['groq','gemini'].filter(p=>SM[p]).map(p=>PN[p]+' ≈ '+Math.max(1,Math.round(1/SM[p].v))+'× سریع‌تر از پخش');$('#ph').textContent=a.length?'سرعت اندازه‌گیری‌شده: '+a.join(' · '):'سرعت هنوز اندازه‌گیری نشده؛ با اولین زیرنویس خودکار سنجیده می‌شود.'}
-function learn(p,v){const o=SM[p];SM[p]={v:o?o.v*.6+v*.4:v,t:Date.now()};try{localStorage.setItem('sm',JSON.stringify(SM))}catch(e){}spd()}
-function order(){const a=['gemini','groq'].filter(kf),u=a.filter(up).sort((x,y)=>est(x)-est(y));
-  if(mode!='auto'&&u.includes(mode))u.unshift(...u.splice(u.indexOf(mode),1));
-  return[...u,...a.filter(p=>!u.includes(p))]}
-const fin=c=>({...c,e:Math.min(c.e,c.s+Math.max(3,1.5+c.t.length*.09))});
-function spl(c){const L=72;if(c.t.length<=L&&c.e-c.s<=7)return[fin(c)];
-  const p=[];let cur='';for(const x of c.t.split(/\s+/)){if(cur&&(cur+' '+x).length>L){p.push(cur);cur=x}else cur=cur?cur+' '+x:x}
-  if(cur)p.push(cur);const tot=p.reduce((a,x)=>a+x.length,0),d=c.e-c.s;let t=c.s;
-  return p.map(x=>{const e=t+d*x.length/tot,o={s:t,e,t:x};t=e;return fin(o)})}
-async function grqTr(sg,n){
-  const body={model:GM.chat,temperature:.2,messages:[{role:'system',content:`You are a professional subtitle translator. Translate every numbered line into ${n}. Keep each line short and natural. Reply ONLY with the same number of lines in the exact format: number|translation. Never merge, split, skip, add or explain.`},{role:'user',content:sg.map((c,i)=>(i+1)+'|'+c.t.replace(/[\r\n|]+/g,' ')).join('\n')}]};
-  if(/gpt-oss/.test(GM.chat))body.reasoning_effort='low';
-  const r=await fx(GB+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+gkey},body:JSON.stringify(body)});
-  if(!r)throw E('زمان انتظار ترجمه به پایان رسید',0);
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok)throw E(j.error?.message||r.status,r.status);
-  const o={};(j.choices?.[0]?.message?.content||'').replace(/<think>[\s\S]*?<\/think>/g,'').split('\n').forEach(l=>{const m=l.match(/^\s*(\d+)\s*[|:：.\-]\s*(.+)$/);if(m)o[+m[1]]=m[2].trim()});
-  let miss=0;const out=sg.map((c,i)=>{const t=o[i+1];if(!t){miss++;return c}return{...c,t}});
-  if(miss>sg.length*.3)throw E('ترجمه ناقص بود',0);
-  return out}
-async function grqGen(blob,off){
-  const n=LANGS.find(l=>l[0]==lang)[2];let r,j;
-  for(let t=0;t<2;t++){
-    const fd=new FormData();fd.append('file',blob,'a.wav');fd.append('model',GM.stt);fd.append('response_format','verbose_json');fd.append('temperature','0');
-    r=await fx(GB+'/audio/transcriptions',{method:'POST',headers:{Authorization:'Bearer '+gkey},body:fd});
-    if(!r)throw E('زمان انتظار یا قطع اتصال',0);
-    j=await r.json().catch(()=>({}));
-    if(r.ok)break;
-    if((r.status==429||r.status==503)&&!t){await sleep(Math.min(8,+r.headers.get('retry-after')||4)*1e3);continue}
-    throw E(j.error?.message||r.status,r.status)}
-  let sg=(j.segments||[]).filter(g=>String(g.text||'').trim()&&!(g.no_speech_prob>.8&&g.avg_logprob<-.7)&&!(g.compression_ratio>2.6)).map(g=>({s:g.start+off,e:g.end+off,t:String(g.text).trim()}));
-  if(!sg.length)return[];
-  const dl=String(j.language||'').toLowerCase();
-  if(dl!=n.toLowerCase()&&dl!=lang)sg=await grqTr(sg,n);
-  return sg.flatMap(spl)}
-async function run(p,blob,off,dur,alt){const t0=Date.now();
-  try{const r=await(p=='groq'?grqGen:gemGen)(blob,off,alt);learn(p,(Date.now()-t0)/1e3/dur);used[p]=(used[p]||0)+1;LP=p;return r}
-  catch(e){DW[p]=Date.now()+(e.st==401||e.st==403||/api.?key/i.test(e.message)?1e13:e.st==429?6e4:2e4);throw e}}
-async function proc(blob,off,dur,probe){
-  const o=order(),l=o.filter(up),er=[];
-  if(probe&&mode=='auto'&&l.length>1&&l.some(old))return new Promise((ok,no)=>{let n=l.length,dn=0;
-    l.forEach(p=>run(p,blob,off,dur,true).then(r=>{if(!dn){dn=1;ok(r)}},e=>{er.push(PN[p]+': '+(e.message||e));if(!--n&&!dn)no(new Error(er.join(' | ')))}))});
-  for(let i=0;i<o.length;i++){try{return await run(o[i],blob,off,dur,i<o.length-1)}catch(e){er.push(PN[o[i]]+': '+(e.message||e));if(i<o.length-1)sw++}}
-  throw new Error(er.join(' | '))}
-function pmUp(){document.querySelectorAll('#pm button').forEach(b=>b.classList.toggle('on',b.dataset.v==mode))}
-document.querySelectorAll('#pm button').forEach(b=>b.onclick=()=>{mode=b.dataset.v;try{localStorage.setItem('sv',mode)}catch(e){}pmUp()});
-$('#save').onclick=async()=>{key=real.trim();gkey=greal.trim();try{localStorage.setItem('sk',key);localStorage.setItem('gk',gkey)}catch(e){}for(const p in DW)DW[p]=0;if(await checkAll())$('#set').hidden=true};
-$('#mn').onclick=()=>{$('#set').hidden=false;pvw();spd()};
+check(key);
+$('#save').onclick=async()=>{const k=real.trim();key=k;try{localStorage.setItem('sk',k)}catch(e){}if(await check(k))$('#set').hidden=true};
+$('#mn').onclick=()=>{$('#set').hidden=false;pvw()};
 $('#cl').onclick=()=>$('#set').hidden=true;
 
 $('#add').onclick=()=>$('#f').click();
@@ -196,7 +135,7 @@ $('#pv').ontimeupdate=e=>{const t=e.target.currentTime,q=cues.find(k=>t>=k.s&&t<
 
 let T0=0,LT='';function show(){$('#msg').textContent=LT+(T0?' · '+Math.round((Date.now()-T0)/1000)+' ثانیه':'')}setInterval(show,1000);
 function prog(p,t){$('#pg').hidden=false;$('#bar').style.width=p+'%';LT=t;show()}
-const fx=(u,o)=>fetch(u,{...o,signal:AbortSignal.timeout?AbortSignal.timeout(45000):undefined}).catch(()=>null);
+const fx=(u,o,ms=45000)=>fetch(u,{...o,signal:AbortSignal.timeout?AbortSignal.timeout(ms):undefined}).catch(()=>null);
 const MS=['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-flash-latest'];let mi=0;
 const b64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.split(',')[1]);f.readAsDataURL(b)});
 function wav(p){const w=new DataView(new ArrayBuffer(44+p.length*2)),s=(o,t)=>[...t].forEach((c,i)=>w.setUint8(o+i,c.charCodeAt(0)));
@@ -207,22 +146,49 @@ function cuts(p){const C=Math.min(192e4,Math.max(96e4,Math.round(p.length/3))),W
     for(let s=t-W;s<t+W;s+=F){let e=0;for(let i=s;i<s+F;i++)e+=Math.abs(p[i]);if(e<bv){bv=e;best=s}}
     a.push(best)}
   a.push(p.length);return a}
-async function gemGen(blob,off,alt){
-  const n=LANGS.find(l=>l[0]==lang)[2],d=await b64(blob);
+const DEAD={};let og=1;try{og=localStorage.getItem('og')=='0'?0:1}catch(e){}
+const crcT=(()=>{const t=[];for(let i=0;i<256;i++){let r=i<<24;for(let k=0;k<8;k++)r=r&0x80000000?(r<<1)^0x04C11DB7:r<<1;t.push(r>>>0)}return t})();
+function oggPage(parts,flag,gran,seq){
+  const seg=[];parts.forEach(u=>{let l=u.length;while(l>=255){seg.push(255);l-=255}seg.push(l)});
+  const bl=parts.reduce((a,u)=>a+u.length,0),o=new Uint8Array(27+seg.length+bl),v=new DataView(o.buffer);
+  o.set([79,103,103,83,0,flag]);v.setUint32(6,gran%4294967296,true);v.setUint32(10,Math.floor(gran/4294967296),true);v.setUint32(14,1,true);v.setUint32(18,seq,true);o[26]=seg.length;o.set(seg,27);
+  let q=27+seg.length;parts.forEach(u=>{o.set(u,q);q+=u.length});
+  let c=0;for(let i=0;i<o.length;i++)c=((c<<8)^crcT[((c>>>24)^o[i])&255])>>>0;
+  v.setUint32(22,c,true);return o}
+async function opus(pcm){
+  if(!window.AudioEncoder||!window.AudioData)return null;
+  const cfg={codec:'opus',sampleRate:16000,numberOfChannels:1,bitrate:24000};
+  if(!(await AudioEncoder.isConfigSupported(cfg)).supported)return null;
+  const pk=[];let hd=null,er=null;
+  const en=new AudioEncoder({output:(c,md)=>{const u=new Uint8Array(c.byteLength);c.copyTo(u);pk.push([u,Math.round((c.duration||2e4)*.048)]);const d=md&&md.decoderConfig&&md.decoderConfig.description;if(!hd&&d)hd=new Uint8Array(d.buffer||d)},error:e=>er=e});
+  en.configure(cfg);
+  for(let i=0;i<pcm.length;i+=16e4){const s=pcm.subarray(i,Math.min(pcm.length,i+16e4)),ad=new AudioData({format:'s16',sampleRate:16000,numberOfFrames:s.length,numberOfChannels:1,timestamp:Math.round(i/16e3*1e6),data:s});en.encode(ad);ad.close()}
+  await en.flush();en.close();
+  if(er||!pk.length)return null;
+  if(!hd){hd=new Uint8Array(19);hd.set([79,112,117,115,72,101,97,100,1,1,56,1,128,62,0,0,0,0,0])}
+  const out=[oggPage([hd],2,0,0),oggPage([new Uint8Array([79,112,117,115,84,97,103,115,0,0,0,0,0,0,0,0])],0,0,1)];let g=0,seq=2;
+  for(let i=0;i<pk.length;i+=50){const x=pk.slice(i,i+50);g+=x.reduce((a,y)=>a+y[1],0);out.push(oggPage(x.map(y=>y[0]),i+50>=pk.length?4:0,g,seq++))}
+  return new Blob(out,{type:'audio/ogg'})}
+async function gen(pcm,off){
+  const n=LANGS.find(l=>l[0]==lang)[2];let mime='audio/wav',bl=null;
+  if(og)try{bl=await opus(pcm);if(bl)mime='audio/ogg'}catch(e){bl=null}
+  let d=await b64(bl||wav(pcm));
   const p=`Transcribe all speech in this audio and write subtitles in ${n} (translate when the spoken language differs). Sync every cue precisely with the speech: start exactly when the speaker begins the phrase and end when the phrase ends. Max two short lines per cue, 1-6 seconds each, chronological, no overlaps. Times are relative to the start of this audio. Reply ONLY with one cue per line and no other text, in this exact format: start|end|text  (start and end as m:ss.s, example: 0:12.5|0:15.2|Hello there)`;
-  let err='',es=0;
-  for(let i=mi;i<MS.length;i++){const m=MS[i];
-    for(let t=0;t<3;t++){
-      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'audio/wav',data:d}},{text:p}]}],generationConfig:{temperature:.2,...(m.startsWith('gemini-2.5')?{thinkingConfig:{thinkingBudget:0}}:{})}})});
-      if(!r){err='زمان انتظار به پایان رسید';es=0;break}
+  let err='',day=false;
+  for(let rnd=0;rnd<2;rnd++){let wait=0;
+    for(let i=mi;i<MS.length;i++){const m=MS[i];if(DEAD[m])continue;
+      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:mime,data:d}},{text:p}]}],generationConfig:{temperature:.2,...(m.startsWith('gemini-2.5')?{thinkingConfig:{thinkingBudget:0}}:{})}})},15e4);
+      if(!r){err='زمان انتظار به پایان رسید';continue}
       const j=await r.json().catch(()=>({}));
       if(r.ok){const x=(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('').replace(/```/g,'').split('\n');
         return x.map(l=>l.split('|')).filter(c=>c.length>2).map(c=>({s:tt(c[0])+off,e:tt(c[1])+off,t:c.slice(2).join('|').trim()}))}
-      err=j.error?.message||r.status;es=r.status;
-      if(r.status==429||r.status==503){if(t||alt)break;await sleep(3000);continue}
-      if(r.status==404){mi=Math.max(mi,i+1);break}
-      throw E(err,r.status)}}
-  throw E(err||'خطای نامشخص',es)}
+      err=j.error?.message||r.status;
+      if(r.status==400&&mime=='audio/ogg'){og=0;try{localStorage.setItem('og','0')}catch(e){}mime='audio/wav';d=await b64(wav(pcm));i--;continue}
+      if(r.status==429||r.status==503){const ds=j.error?.details||[];if(JSON.stringify(ds).includes('PerDay')){DEAD[m]=1;day=true;continue}wait=Math.max(wait,Math.min(25,parseFloat((ds.find(x=>x.retryDelay)||{}).retryDelay)||5));continue}
+      if(r.status==404){mi=Math.max(mi,i+1);continue}
+      throw new Error(err)}
+    if(!wait)break;await sleep(wait*1e3)}
+  throw new Error((day?'سهمیه‌ی روزانه تمام شده · ':'')+err)}
 const tt=s=>typeof s=='number'?s:String(s).trim().replace(',','.').split(':').map(Number).reduce((a,v)=>a*60+v,0);
 const pad=(v,n=2)=>String(v).padStart(n,'0');
 const ts=t=>pad(Math.floor(t/3600))+':'+pad(Math.floor(t%3600/60))+':'+pad(Math.floor(t%60))+','+pad(Math.floor(t%1*1000),3);
@@ -248,18 +214,18 @@ async function getAudio(){
   return p}
 $('#go').onclick=async()=>{
   if(busy)return;
-  if(!(await checkAll())){$('#set').hidden=false;return}
+  if(!(await check(key))){$('#set').hidden=false;return}
   busy=true;$('#go').disabled=$('#chg').disabled=true;$('#dv').disabled=$('#ds').disabled=true;
   try{
-    used={};sw=0;LP='';T0=Date.now();prog(3,'در حال استخراج صدا…');const P=await getAudio(),t1=Math.round((Date.now()-T0)/1000),A=cuts(P),N=A.length-1,R=[];let ix=0,dn=0;
+    for(const k in DEAD)delete DEAD[k];T0=Date.now();prog(3,'در حال استخراج صدا…');const P=await getAudio(),t1=Math.round((Date.now()-T0)/1000),A=cuts(P),N=A.length-1,R=[];let ix=0,dn=0;
     prog(30,'در حال ساخت زیرنویس…');
-    await Promise.all([0,1,2,3,4].map(async()=>{for(let k;(k=ix++)<N;){R[k]=await proc(wav(P.subarray(A[k],A[k+1])),A[k]/16000,(A[k+1]-A[k])/16000,k==0);prog(30+Math.round(++dn/N*68),'در حال ساخت زیرنویس… '+dn+'/'+N+' · '+(PN[LP]||'')+(sw?' (جابه‌جایی خودکار)':''))}}));
+    await Promise.all([0,1,2,3,4].map(async()=>{for(let k;(k=ix++)<N;){R[k]=await gen(P.subarray(A[k],A[k+1]),A[k]/16000);prog(30+Math.round(++dn/N*68),'در حال ساخت زیرنویس… '+dn+'/'+N)}}));
     let a=R.flat().filter(c=>c.t&&isFinite(c.s)&&isFinite(c.e)).sort((x,y)=>x.s-y.s);
     a.forEach((c,i)=>{if(c.e<=c.s)c.e=c.s+2;const n=a[i+1];if(n&&n.s<c.e)c.e=Math.max(c.s+.3,n.s)});
     if(!a.length)throw new Error('گفتاری پیدا نشد');
     cues=a;srt=a.map((c,i)=>`${i+1}\n${ts(c.s)} --> ${ts(c.e)}\n${c.t}\n`).join('\n');
-    const tg=Math.round((Date.now()-T0)/1000);T0=0;prog(100,`زیرنویس آماده شد · استخراج صدا ${t1} ثانیه، کل ${tg} ثانیه · ${Object.entries(used).map(([p,n])=>PN[p]+' ×'+n).join('، ')}`);$('#dv').disabled=$('#ds').disabled=false;
-  }catch(e){prog(0,'خطا: '+(e.message||e).toString().slice(0,240))}
+    const tg=Math.round((Date.now()-T0)/1000);T0=0;prog(100,`زیرنویس آماده شد · استخراج صدا ${t1} ثانیه، کل ${tg} ثانیه`);$('#dv').disabled=$('#ds').disabled=false;
+  }catch(e){prog(0,'خطا: '+(e.message||e).toString().slice(0,200))}
   T0=0;busy=false;$('#go').disabled=$('#chg').disabled=false};
 
 const base=()=>(file.name.replace(/\.[^.]+$/,'')||'video')+'-sub';
@@ -301,7 +267,6 @@ $('#dv').onclick=async()=>{
   }catch(e){prog(0,'خطا: '+(e.message||e).toString().slice(0,160))}
   try{ac.close()}catch(e){}
   busy=false;$('#go').disabled=$('#chg').disabled=$('#dv').disabled=$('#ds').disabled=false};
-pmUp();spd();checkAll();
 </script>
 </body>
 </html>
