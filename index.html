@@ -146,7 +146,7 @@ function cuts(p){const C=Math.min(192e4,Math.max(96e4,Math.round(p.length/3))),W
     for(let s=t-W;s<t+W;s+=F){let e=0;for(let i=s;i<s+F;i++)e+=Math.abs(p[i]);if(e<bv){bv=e;best=s}}
     a.push(best)}
   a.push(p.length);return a}
-const DEAD={};let og=1;try{og=localStorage.getItem('og')=='0'?0:1}catch(e){}
+const DEAD={};let og=1,LM='';try{og=localStorage.getItem('og')=='0'?0:1}catch(e){}
 const crcT=(()=>{const t=[];for(let i=0;i<256;i++){let r=i<<24;for(let k=0;k<8;k++)r=r&0x80000000?(r<<1)^0x04C11DB7:r<<1;t.push(r>>>0)}return t})();
 function oggPage(parts,flag,gran,seq){
   const seg=[];parts.forEach(u=>{let l=u.length;while(l>=255){seg.push(255);l-=255}seg.push(l)});
@@ -174,21 +174,24 @@ async function gen(pcm,off){
   if(og)try{bl=await opus(pcm);if(bl)mime='audio/ogg'}catch(e){bl=null}
   let d=await b64(bl||wav(pcm));
   const p=`Transcribe all speech in this audio and write subtitles in ${n} (translate when the spoken language differs). Sync every cue precisely with the speech: start exactly when the speaker begins the phrase and end when the phrase ends. Max two short lines per cue, 1-6 seconds each, chronological, no overlaps. Times are relative to the start of this audio. Reply ONLY with one cue per line and no other text, in this exact format: start|end|text  (start and end as m:ss.s, example: 0:12.5|0:15.2|Hello there)`;
-  let err='',day=false;
-  for(let rnd=0;rnd<2;rnd++){let wait=0;
+  let err='',day=false,busy=0,net=0;
+  for(let rnd=0;rnd<4;rnd++){let wait=0;
     for(let i=mi;i<MS.length;i++){const m=MS[i];if(DEAD[m])continue;
-      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:mime,data:d}},{text:p}]}],generationConfig:{temperature:.2,...(m.startsWith('gemini-2.5')?{thinkingConfig:{thinkingBudget:0}}:{})}})},15e4);
-      if(!r){err='زمان انتظار به پایان رسید';continue}
+      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:mime,data:d}},{text:p}]}],generationConfig:{temperature:.2,...(m.startsWith('gemini-2.5')?{thinkingConfig:{thinkingBudget:0}}:{})}})},6e4+Math.round(d.length/1e6*2e4));
+      if(!r){net++;err='زمان انتظار به پایان رسید';wait=Math.max(wait,3);continue}
       const j=await r.json().catch(()=>({}));
-      if(r.ok){const x=(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('').replace(/```/g,'').split('\n');
+      if(r.ok){LM=mime=='audio/ogg'?'ارسال فشرده':'ارسال WAV';const x=(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('').replace(/```/g,'').split('\n');
         return x.map(l=>l.split('|')).filter(c=>c.length>2).map(c=>({s:tt(c[0])+off,e:tt(c[1])+off,t:c.slice(2).join('|').trim()}))}
       err=j.error?.message||r.status;
       if(r.status==400&&mime=='audio/ogg'){og=0;try{localStorage.setItem('og','0')}catch(e){}mime='audio/wav';d=await b64(wav(pcm));i--;continue}
-      if(r.status==429||r.status==503){const ds=j.error?.details||[];if(JSON.stringify(ds).includes('PerDay')){DEAD[m]=1;day=true;continue}wait=Math.max(wait,Math.min(25,parseFloat((ds.find(x=>x.retryDelay)||{}).retryDelay)||5));continue}
+      if(r.status==429||r.status==503){const ds=j.error?.details||[];if(JSON.stringify(ds).includes('PerDay')){DEAD[m]=1;day=true;continue}
+        if(r.status==503)busy++;
+        wait=Math.max(wait,Math.min(25,parseFloat((ds.find(x=>x.retryDelay)||{}).retryDelay)||(r.status==503?4*(rnd+1):5)));continue}
       if(r.status==404){mi=Math.max(mi,i+1);continue}
       throw new Error(err)}
-    if(!wait)break;await sleep(wait*1e3)}
-  throw new Error((day?'سهمیه‌ی روزانه تمام شده · ':'')+err)}
+    if(!wait)break;LT=(busy?'جمینای شلوغ است':'مشکل اتصال')+'؛ تلاش مجدد…';show();await sleep(wait*1e3)}
+  const why=day?'سهمیه‌ی روزانه تمام شده':busy?'جمینای شلوغ است':net?'اتصال به جمینای برقرار نشد یا پاسخی نیامد':'';
+  throw new Error(why?why+' · '+String(err).slice(0,90):err)}
 const tt=s=>typeof s=='number'?s:String(s).trim().replace(',','.').split(':').map(Number).reduce((a,v)=>a*60+v,0);
 const pad=(v,n=2)=>String(v).padStart(n,'0');
 const ts=t=>pad(Math.floor(t/3600))+':'+pad(Math.floor(t%3600/60))+':'+pad(Math.floor(t%60))+','+pad(Math.floor(t%1*1000),3);
@@ -219,7 +222,7 @@ $('#go').onclick=async()=>{
   try{
     for(const k in DEAD)delete DEAD[k];T0=Date.now();prog(3,'در حال استخراج صدا…');const P=await getAudio(),t1=Math.round((Date.now()-T0)/1000),A=cuts(P),N=A.length-1,R=[];let ix=0,dn=0;
     prog(30,'در حال ساخت زیرنویس…');
-    await Promise.all([0,1,2,3,4].map(async()=>{for(let k;(k=ix++)<N;){R[k]=await gen(P.subarray(A[k],A[k+1]),A[k]/16000);prog(30+Math.round(++dn/N*68),'در حال ساخت زیرنویس… '+dn+'/'+N)}}));
+    const Q=[...Array(N).keys()],F={};const wk=async()=>{for(let k;(k=Q.shift())!==undefined;){try{R[k]=await gen(P.subarray(A[k],A[k+1]),A[k]/16000);prog(30+Math.round(++dn/N*68),'در حال ساخت زیرنویس… '+dn+'/'+N+(LM?' · '+LM:''))}catch(e){F[k]=(F[k]||0)+1;if(F[k]<2){Q.push(k);await sleep(5000)}else{Q.length=0;throw e}}}};await Promise.all([0,1,2,3,4].map(wk));
     let a=R.flat().filter(c=>c.t&&isFinite(c.s)&&isFinite(c.e)).sort((x,y)=>x.s-y.s);
     a.forEach((c,i)=>{if(c.e<=c.s)c.e=c.s+2;const n=a[i+1];if(n&&n.s<c.e)c.e=Math.max(c.s+.3,n.s)});
     if(!a.length)throw new Error('گفتاری پیدا نشد');
