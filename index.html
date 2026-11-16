@@ -136,7 +136,14 @@ $('#pv').ontimeupdate=e=>{const t=e.target.currentTime,q=cues.find(k=>t>=k.s&&t<
 let T0=0,LT='';function show(){$('#msg').textContent=LT+(T0?' · '+Math.round((Date.now()-T0)/1000)+' ثانیه':'')}setInterval(show,1000);
 function prog(p,t){$('#pg').hidden=false;$('#bar').style.width=p+'%';LT=t;show()}
 const fx=(u,o,ms=45000)=>fetch(u,{...o,signal:AbortSignal.timeout?AbortSignal.timeout(ms):undefined}).catch(()=>null);
-const MS=['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-flash-latest'];let mi=0;
+let MS=['gemini-flash-latest','gemini-flash-lite-latest','gemini-2.5-flash'],MP=0;const NT={};
+async function pickModels(){if(MP)return;
+  try{const r=await fx(`${B}/v1beta/models?pageSize=1000&key=${encodeURIComponent(key)}`,{},2e4);if(!r||!r.ok)return;
+    const l=((await r.json()).models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace('models/','')),
+    f=re=>l.map(n=>{const x=n.match(re);return x&&[parseFloat(x[1]),n]}).filter(Boolean).sort((a,b)=>b[0]-a[0]).map(x=>x[1]),
+    fl=f(/^gemini-(\d+(?:\.\d+)?)-flash$/),lt=f(/^gemini-(\d+(?:\.\d+)?)-flash-lite$/),
+    m=[fl[0],lt[0],fl[1],l.includes('gemini-flash-latest')&&'gemini-flash-latest'].filter(Boolean);
+    if(m.length){MS=[...new Set(m)];MP=1}}catch(e){}}
 const b64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.split(',')[1]);f.readAsDataURL(b)});
 function wav(p){const w=new DataView(new ArrayBuffer(44+p.length*2)),s=(o,t)=>[...t].forEach((c,i)=>w.setUint8(o+i,c.charCodeAt(0)));
   s(0,'RIFF');w.setUint32(4,36+p.length*2,true);s(8,'WAVEfmt ');w.setUint32(16,16,true);w.setUint16(20,1,true);w.setUint16(22,1,true);w.setUint32(24,16000,true);w.setUint32(28,32000,true);w.setUint16(32,2,true);w.setUint16(34,16,true);s(36,'data');w.setUint32(40,p.length*2,true);
@@ -174,24 +181,25 @@ async function gen(pcm,off){
   if(og)try{bl=await opus(pcm);if(bl)mime='audio/ogg'}catch(e){bl=null}
   let d=await b64(bl||wav(pcm));
   const p=`Transcribe all speech in this audio and write subtitles in ${n} (translate when the spoken language differs). Sync every cue precisely with the speech: start exactly when the speaker begins the phrase and end when the phrase ends. Max two short lines per cue, 1-6 seconds each, chronological, no overlaps. Times are relative to the start of this audio. Reply ONLY with one cue per line and no other text, in this exact format: start|end|text  (start and end as m:ss.s, example: 0:12.5|0:15.2|Hello there)`;
-  let err='',day=false,busy=0,net=0;
+  let err='',day=false,busy=0,net=0,nf=0;
   for(let rnd=0;rnd<4;rnd++){let wait=0;
-    for(let i=mi;i<MS.length;i++){const m=MS[i];if(DEAD[m])continue;
-      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:mime,data:d}},{text:p}]}],generationConfig:{temperature:.2,...(m.startsWith('gemini-2.5')?{thinkingConfig:{thinkingBudget:0}}:{})}})},6e4+Math.round(d.length/1e6*2e4));
+    for(let i=0;i<MS.length;i++){const m=MS[i];if(DEAD[m])continue;
+      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:mime,data:d}},{text:p}]}],generationConfig:{...(/^gemini-2\.5/.test(m)?{temperature:.2}:{}),...(NT[m]?{}:{thinkingConfig:/^gemini-2\.5/.test(m)?{thinkingBudget:0}:{thinkingLevel:'minimal'}})}})},6e4+Math.round(d.length/1e6*2e4));
       if(!r){net++;err='زمان انتظار به پایان رسید';wait=Math.max(wait,3);continue}
       const j=await r.json().catch(()=>({}));
       if(r.ok){LM=mime=='audio/ogg'?'ارسال فشرده':'ارسال WAV';const x=(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('').replace(/```/g,'').split('\n');
         return x.map(l=>l.split('|')).filter(c=>c.length>2).map(c=>({s:tt(c[0])+off,e:tt(c[1])+off,t:c.slice(2).join('|').trim()}))}
       err=j.error?.message||r.status;
       if(r.status==400&&mime=='audio/ogg'){og=0;try{localStorage.setItem('og','0')}catch(e){}mime='audio/wav';d=await b64(wav(pcm));i--;continue}
+      if(r.status==400&&!NT[m]&&/think/i.test(String(err))){NT[m]=1;i--;continue}
       if(r.status==429||r.status==503){const ds=j.error?.details||[];if(JSON.stringify(ds).includes('PerDay')){DEAD[m]=1;day=true;continue}
         if(r.status==503)busy++;
         wait=Math.max(wait,Math.min(25,parseFloat((ds.find(x=>x.retryDelay)||{}).retryDelay)||(r.status==503?4*(rnd+1):5)));continue}
-      if(r.status==404){mi=Math.max(mi,i+1);continue}
+      if(r.status==404){DEAD[m]=1;nf++;continue}
       throw new Error(err)}
     if(!wait)break;LT=(busy?'جمینای شلوغ است':'مشکل اتصال')+'؛ تلاش مجدد…';show();await sleep(wait*1e3)}
-  const why=day?'سهمیه‌ی روزانه تمام شده':busy?'جمینای شلوغ است':net?'اتصال به جمینای برقرار نشد یا پاسخی نیامد':'';
-  throw new Error(why?why+' · '+String(err).slice(0,90):err)}
+  const why=day?'سهمیه‌ی روزانه تمام شده':busy?'جمینای شلوغ است':net?'اتصال به جمینای برقرار نشد یا پاسخی نیامد':nf?'مدل جمینای در دسترس نیست':'';
+  throw new Error(why?why+' · '+String(err).slice(0,90):(err||'خطای نامشخص از جمینای'))}
 const tt=s=>typeof s=='number'?s:String(s).trim().replace(',','.').split(':').map(Number).reduce((a,v)=>a*60+v,0);
 const pad=(v,n=2)=>String(v).padStart(n,'0');
 const ts=t=>pad(Math.floor(t/3600))+':'+pad(Math.floor(t%3600/60))+':'+pad(Math.floor(t%60))+','+pad(Math.floor(t%1*1000),3);
@@ -220,7 +228,7 @@ $('#go').onclick=async()=>{
   if(!(await check(key))){$('#set').hidden=false;return}
   busy=true;$('#go').disabled=$('#chg').disabled=true;$('#dv').disabled=$('#ds').disabled=true;
   try{
-    for(const k in DEAD)delete DEAD[k];T0=Date.now();prog(3,'در حال استخراج صدا…');const P=await getAudio(),t1=Math.round((Date.now()-T0)/1000),A=cuts(P),N=A.length-1,R=[];let ix=0,dn=0;
+    for(const k in DEAD)delete DEAD[k];const pm=pickModels();T0=Date.now();prog(3,'در حال استخراج صدا…');const P=await getAudio(),_w=await pm,t1=Math.round((Date.now()-T0)/1000),A=cuts(P),N=A.length-1,R=[];let ix=0,dn=0;
     prog(30,'در حال ساخت زیرنویس…');
     const Q=[...Array(N).keys()],F={};const wk=async()=>{for(let k;(k=Q.shift())!==undefined;){try{R[k]=await gen(P.subarray(A[k],A[k+1]),A[k]/16000);prog(30+Math.round(++dn/N*68),'در حال ساخت زیرنویس… '+dn+'/'+N+(LM?' · '+LM:''))}catch(e){F[k]=(F[k]||0)+1;if(F[k]<2){Q.push(k);await sleep(5000)}else{Q.length=0;throw e}}}};await Promise.all([0,1,2,3,4].map(wk));
     let a=R.flat().filter(c=>c.t&&isFinite(c.s)&&isFinite(c.e)).sort((x,y)=>x.s-y.s);
@@ -228,7 +236,7 @@ $('#go').onclick=async()=>{
     if(!a.length)throw new Error('گفتاری پیدا نشد');
     cues=a;srt=a.map((c,i)=>`${i+1}\n${ts(c.s)} --> ${ts(c.e)}\n${c.t}\n`).join('\n');
     const tg=Math.round((Date.now()-T0)/1000);T0=0;prog(100,`زیرنویس آماده شد · استخراج صدا ${t1} ثانیه، کل ${tg} ثانیه`);$('#dv').disabled=$('#ds').disabled=false;
-  }catch(e){prog(0,'خطا: '+(e.message||e).toString().slice(0,200))}
+  }catch(e){prog(0,'خطا: '+((e&&e.message)||(e&&e.name&&e.name!='Error'?e.name:'خطای نامشخص')).toString().slice(0,200))}
   T0=0;busy=false;$('#go').disabled=$('#chg').disabled=false};
 
 const base=()=>(file.name.replace(/\.[^.]+$/,'')||'video')+'-sub';
