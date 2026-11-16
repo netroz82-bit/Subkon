@@ -176,21 +176,16 @@ async function opus(pcm){
   const out=[oggPage([hd],2,0,0),oggPage([new Uint8Array([79,112,117,115,84,97,103,115,0,0,0,0,0,0,0,0])],0,0,1)];let g=0,seq=2;
   for(let i=0;i<pk.length;i+=50){const x=pk.slice(i,i+50);g+=x.reduce((a,y)=>a+y[1],0);out.push(oggPage(x.map(y=>y[0]),i+50>=pk.length?4:0,g,seq++))}
   return new Blob(out,{type:'audio/ogg'})}
-async function gen(pcm,off){
-  const n=LANGS.find(l=>l[0]==lang)[2];let mime='audio/wav',bl=null;
-  if(og)try{bl=await opus(pcm);if(bl)mime='audio/ogg'}catch(e){bl=null}
-  let d=await b64(bl||wav(pcm));
-  const p=`Transcribe all speech in this audio and write subtitles in ${n} (translate when the spoken language differs). Sync every cue precisely with the speech: start exactly when the speaker begins the phrase and end when the phrase ends. Max two short lines per cue, 1-6 seconds each, chronological, no overlaps. Times are relative to the start of this audio. Reply ONLY with one cue per line and no other text, in this exact format: start|end|text  (start and end as m:ss.s, example: 0:12.5|0:15.2|Hello there)`;
+async function ask(parts){
+  const pz=parts.reduce((a,x)=>a+(x.inline_data?x.inline_data.data.length:(x.text||'').length),0);
   let err='',day=false,busy=0,net=0,nf=0;
   for(let rnd=0;rnd<4;rnd++){let wait=0;
     for(let i=0;i<MS.length;i++){const m=MS[i];if(DEAD[m])continue;
-      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:mime,data:d}},{text:p}]}],generationConfig:{...(/^gemini-2\.5/.test(m)?{temperature:.2}:{}),...(NT[m]?{}:{thinkingConfig:/^gemini-2\.5/.test(m)?{thinkingBudget:0}:{thinkingLevel:'minimal'}})}})},6e4+Math.round(d.length/1e6*2e4));
+      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts}],generationConfig:{...(/^gemini-2\.5/.test(m)?{temperature:.1}:{}),...(NT[m]?{}:{thinkingConfig:/^gemini-2\.5/.test(m)?{thinkingBudget:1024}:{thinkingLevel:'low'}})}})},6e4+Math.round(pz/1e6*2e4));
       if(!r){net++;err='زمان انتظار به پایان رسید';wait=Math.max(wait,3);continue}
       const j=await r.json().catch(()=>({}));
-      if(r.ok){LM=mime=='audio/ogg'?'ارسال فشرده':'ارسال WAV';const x=(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('').replace(/```/g,'').split('\n');
-        return x.map(l=>l.split('|')).filter(c=>c.length>2).map(c=>({s:tt(c[0])+off,e:tt(c[1])+off,t:c.slice(2).join('|').trim()}))}
+      if(r.ok)return(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('');
       err=j.error?.message||r.status;
-      if(r.status==400&&mime=='audio/ogg'){og=0;try{localStorage.setItem('og','0')}catch(e){}mime='audio/wav';d=await b64(wav(pcm));i--;continue}
       if(r.status==400&&!NT[m]&&/think/i.test(String(err))){NT[m]=1;i--;continue}
       if(r.status==429||r.status==503){const ds=j.error?.details||[];if(JSON.stringify(ds).includes('PerDay')){DEAD[m]=1;day=true;continue}
         if(r.status==503)busy++;
@@ -200,6 +195,16 @@ async function gen(pcm,off){
     if(!wait)break;LT=(busy?'جمینای شلوغ است':'مشکل اتصال')+'؛ تلاش مجدد…';show();await sleep(wait*1e3)}
   const why=day?'سهمیه‌ی روزانه تمام شده':busy?'جمینای شلوغ است':net?'اتصال به جمینای برقرار نشد یا پاسخی نیامد':nf?'مدل جمینای در دسترس نیست':'';
   throw new Error(why?why+' · '+String(err).slice(0,90):(err||'خطای نامشخص از جمینای'))}
+async function gen(pcm,off){
+  const n=LANGS.find(l=>l[0]==lang)[2],d=await b64(wav(pcm));
+  const t1=await ask([{inline_data:{mime_type:'audio/wav',data:d}},{text:`Transcribe this audio verbatim, in the language actually spoken or sung. Do not translate, summarize, censor or invent words; skip parts that are only music or noise; if a word is unclear give your most faithful guess. Use the correct spelling and punctuation of that language. Sync every cue precisely: start when the phrase begins and end when it ends. Max two short lines per cue, 1-6 seconds each, chronological, no overlaps. Times are relative to the start of this audio. Reply ONLY with one cue per line in this exact format: start|end|text (start and end as m:ss.s, example: 0:12.5|0:15.2|Hello there). Finally add one last line: LANG|<English name of the spoken language>.`}]);
+  let sl='';const cs=[];
+  t1.replace(/```/g,'').split('\n').forEach(l=>{const c=l.split('|');if(c.length==2&&c[0].trim().toUpperCase()=='LANG')sl=c[1].trim().toLowerCase();else if(c.length>2)cs.push({s:tt(c[0])+off,e:tt(c[1])+off,t:c.slice(2).join('|').trim()})});
+  const g=cs.filter(c=>c.t&&isFinite(c.s)&&isFinite(c.e));
+  if(!g.length||(sl&&(sl.includes(n.toLowerCase())||sl==lang)))return g;
+  const t2=await ask([{text:`Translate these subtitle lines into ${n}. Be faithful, natural and concise; keep proper names; if a line is already in ${n}, keep it unchanged. Reply ONLY with the same number of lines in the format: number|translation. Never merge, split, skip or add lines.\n`+g.map((c,i)=>(i+1)+'|'+c.t.replace(/[\r\n|]+/g,' ')).join('\n')}]);
+  const o={};t2.replace(/```/g,'').split('\n').forEach(l=>{const m=l.match(/^\s*(\d+)\s*\|\s*(.+)$/);if(m)o[+m[1]]=m[2].trim()});
+  return g.map((c,i)=>({...c,t:o[i+1]||c.t}))}
 const tt=s=>typeof s=='number'?s:String(s).trim().replace(',','.').split(':').map(Number).reduce((a,v)=>a*60+v,0);
 const pad=(v,n=2)=>String(v).padStart(n,'0');
 const ts=t=>pad(Math.floor(t/3600))+':'+pad(Math.floor(t%3600/60))+':'+pad(Math.floor(t%60))+','+pad(Math.floor(t%1*1000),3);
@@ -230,7 +235,7 @@ $('#go').onclick=async()=>{
   try{
     for(const k in DEAD)delete DEAD[k];const pm=pickModels();T0=Date.now();prog(3,'در حال استخراج صدا…');const P=await getAudio(),_w=await pm,t1=Math.round((Date.now()-T0)/1000),A=cuts(P),N=A.length-1,R=[];let ix=0,dn=0;
     prog(30,'در حال ساخت زیرنویس…');
-    const Q=[...Array(N).keys()],F={};const wk=async()=>{for(let k;(k=Q.shift())!==undefined;){try{R[k]=await gen(P.subarray(A[k],A[k+1]),A[k]/16000);prog(30+Math.round(++dn/N*68),'در حال ساخت زیرنویس… '+dn+'/'+N+(LM?' · '+LM:''))}catch(e){F[k]=(F[k]||0)+1;if(F[k]<2){Q.push(k);await sleep(5000)}else{Q.length=0;throw e}}}};await Promise.all([0,1,2,3,4].map(wk));
+    const Q=[...Array(N).keys()],F={};const wk=async()=>{for(let k;(k=Q.shift())!==undefined;){try{const a0=Math.max(0,A[k]-64e3),a1=Math.min(P.length,A[k+1]+64e3),lo=k?A[k]/16e3:-1,hi=k<N-1?A[k+1]/16e3:1e9;R[k]=(await gen(P.subarray(a0,a1),a0/16e3)).filter(c=>c.s>=lo&&c.s<hi);prog(30+Math.round(++dn/N*68),'در حال ساخت زیرنویس… '+dn+'/'+N+(LM?' · '+LM:''))}catch(e){F[k]=(F[k]||0)+1;if(F[k]<2){Q.push(k);await sleep(5000)}else{Q.length=0;throw e}}}};await Promise.all([0,1,2,3,4].map(wk));
     let a=R.flat().filter(c=>c.t&&isFinite(c.s)&&isFinite(c.e)).sort((x,y)=>x.s-y.s);
     a.forEach((c,i)=>{if(c.e<=c.s)c.e=c.s+2;const n=a[i+1];if(n&&n.s<c.e)c.e=Math.max(c.s+.3,n.s)});
     if(!a.length)throw new Error('گفتاری پیدا نشد');
@@ -252,7 +257,7 @@ function cap(x,t,w,h,fs,rtl){
   ln.push(cur);const lh=fs*1.4;let y=h*.94;
   ln.reverse().forEach(s=>{const tw=x.measureText(s).width;x.fillStyle='rgba(0,0,0,.65)';x.fillRect(w/2-tw/2-8,y-lh+3,tw+16,lh);x.fillStyle=sc;x.fillText(s,w/2,y-4);y-=lh})}
 
-$('#dv').onclick=async()=>{
+const dvRec=async()=>{
   if(busy||!cues.length)return;busy=true;
   $('#go').disabled=$('#chg').disabled=$('#dv').disabled=$('#ds').disabled=true;
   $('#pv').pause();
@@ -278,6 +283,77 @@ $('#dv').onclick=async()=>{
   }catch(e){prog(0,'خطا: '+(e.message||e).toString().slice(0,160))}
   try{ac.close()}catch(e){}
   busy=false;$('#go').disabled=$('#chg').disabled=$('#dv').disabled=$('#ds').disabled=false};
+
+const Ucat=a=>{const o=new Uint8Array(a.reduce((x,y)=>x+y.length,0));let q=0;a.forEach(y=>{o.set(y,q);q+=y.length});return o};
+const Uid=id=>{const b=[];while(id>0){b.unshift(id%256);id=Math.floor(id/256)}return new Uint8Array(b)};
+const Usz=n=>{let l=1;while(n>=Math.pow(2,7*l)-1)l++;const b=new Uint8Array(l);for(let i=l-1;i>=0;i--){b[i]=n%256;n=Math.floor(n/256)}b[0]|=128>>(l-1);return b};
+const Uel=(id,...p)=>Ucat([Uid(id),Usz(p.reduce((a,b)=>a+b.length,0)),...p]);
+const Uu=(id,v,l)=>{l=l||Math.max(1,Math.ceil(v.toString(2).length/8));const b=new Uint8Array(l);for(let i=l-1;i>=0;i--){b[i]=v%256;v=Math.floor(v/256)}return Uel(id,b)};
+const Uf=(id,v)=>{const b=new Uint8Array(8);new DataView(b.buffer).setFloat64(0,v);return Uel(id,b)};
+const Us=(id,t)=>Uel(id,new TextEncoder().encode(t));
+function webm(vp,ap,w,h,vid,ahd,nc,sr){
+  const all=[...vp.map(p=>({...p,tr:1,ms:Math.round(p.t/1e3)})),...ap.map(p=>({...p,tr:2,k:true,ms:Math.round(p.t/1e3)}))].sort((a,b)=>a.ms-b.ms||a.tr-b.tr);
+  const cl=[],cu=[];let cur=null,bl=[];
+  const fl=()=>{if(cur)cl.push(Uel(0x1F43B675,Uu(0xE7,cur.ms),...bl))};
+  for(const p of all){
+    if(!cur||(p.tr==1&&p.k&&p.ms-cur.ms>=2e3)||p.ms-cur.ms>3e4){fl();cur=p;bl=[];cu.push({ms:p.ms,i:cl.length})}
+    const r=p.ms-cur.ms;bl.push(Uel(0xA3,new Uint8Array([128|p.tr,(r>>8)&255,r&255,p.k?128:0]),p.u))}
+  fl();
+  const dur=all.reduce((m,p)=>Math.max(m,p.ms+Math.round((p.d||0)/1e3)),0);
+  const ohd=ahd||(()=>{const o=new Uint8Array(19);o.set([79,112,117,115,72,101,97,100,1,nc,56,1]);new DataView(o.buffer).setUint32(12,sr,true);return o})();
+  const pre=new DataView(ohd.buffer,ohd.byteOffset).getUint16(10,true);
+  const info=Uel(0x1549A966,Uu(0x2AD7B1,1e6),Uf(0x4489,dur),Us(0x4D80,'Subkon'),Us(0x5741,'Subkon'));
+  const tr=Uel(0x1654AE6B,
+    Uel(0xAE,Uu(0xD7,1),Uu(0x73C5,1),Uu(0x83,1),Us(0x86,vid),Uel(0xE0,Uu(0xB0,w),Uu(0xBA,h))),
+    Uel(0xAE,Uu(0xD7,2),Uu(0x73C5,2),Uu(0x83,2),Us(0x86,'A_OPUS'),Uel(0x63A2,ohd),Uu(0x56AA,Math.round(pre/48000*1e9)),Uu(0x56BB,8e7),Uel(0xE1,Uf(0xB5,sr),Uu(0x9F,nc))));
+  let q=0;const off=cl.map(c=>{const r=q;q+=c.length;return r});
+  const mk=b=>Uel(0x1C53BB6B,...cu.map(c=>Uel(0xBB,Uu(0xB3,c.ms,4),Uel(0xB7,Uu(0xF7,1),Uu(0xF1,b+off[c.i],4)))));
+  const base=info.length+tr.length+mk(0).length,cues=mk(base),body=[info,tr,cues,...cl];
+  const hd=Uel(0x1A45DFA3,Uu(0x4286,1),Uu(0x42F7,1),Uu(0x42F2,4),Uu(0x42F3,8),Us(0x4282,'webm'),Uu(0x4287,4),Uu(0x4285,2));
+  return new Blob([hd,Ucat([Uid(0x18538067),Usz(body.reduce((a,b)=>a+b.length,0))]),...body],{type:'video/webm'})}
+async function dvFast(){
+  const v=document.createElement('video');v.src=url;v.muted=true;v.playsInline=true;v.preload='auto';
+  await new Promise((r,j)=>{v.onloadedmetadata=r;v.onerror=()=>j(new Error('خواندن ویدئو ممکن نشد'))});
+  if(!(v.duration<=900))throw new Error('long');
+  const h=Math.round(Math.min(+$('#q').value||v.videoHeight,v.videoHeight)/2)*2,w=Math.round(v.videoWidth*h/v.videoHeight/2)*2;
+  let vk=null;
+  for(const k of [['vp8','V_VP8'],['vp09.00.10.08','V_VP9']]){const c={codec:k[0],width:w,height:h,bitrate:Math.min(12e6,Math.max(5e5,w*h*3)),framerate:30,latencyMode:'realtime'};if((await VideoEncoder.isConfigSupported(c)).supported){vk=[c,k[1]];break}}
+  if(!vk)throw new Error('nosupport');
+  prog(1,'در حال آماده‌سازی صدا…');
+  const ab=await new OfflineAudioContext(2,1,48000).decodeAudioData(await file.arrayBuffer());
+  const vp=[],ap=[],nc=Math.min(2,ab.numberOfChannels),sr=ab.sampleRate;let ahd=null,fe=null;
+  const ae=new AudioEncoder({output:(c,md)=>{const u=new Uint8Array(c.byteLength);c.copyTo(u);ap.push({t:c.timestamp,d:c.duration||2e4,u});const dd=md&&md.decoderConfig&&md.decoderConfig.description;if(!ahd&&dd)ahd=new Uint8Array(dd instanceof ArrayBuffer?dd:dd.buffer.slice(dd.byteOffset,dd.byteOffset+dd.byteLength))},error:e=>fe=e});
+  ae.configure({codec:'opus',sampleRate:sr,numberOfChannels:nc,bitrate:nc*64000});
+  for(let i=0;i<ab.length;i+=48000){const n=Math.min(48000,ab.length-i),f=new Float32Array(n*nc);for(let c=0;c<nc;c++)f.set(ab.getChannelData(c).subarray(i,i+n),c*n);const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:n,numberOfChannels:nc,timestamp:Math.round(i/sr*1e6),data:f});ae.encode(ad);ad.close()}
+  await ae.flush();ae.close();
+  const ve=new VideoEncoder({output:c=>{const u=new Uint8Array(c.byteLength);c.copyTo(u);vp.push({t:c.timestamp,d:c.duration||33333,k:c.type=='key',u})},error:e=>fe=e});
+  ve.configure(vk[0]);
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+  const rtl=['fa','ar','ur','he'].includes(lang),fs=Math.max(12,Math.round(h*sz));let last=-1,fr=0,pa=false,dn=false;
+  ve.ondequeue=()=>{if(pa&&ve.encodeQueueSize<3){pa=false;v.play()}};
+  await new Promise((res,rej)=>{
+    const cb=(now,md)=>{
+      try{const t=md.mediaTime;
+        if(t>last){last=t;x.drawImage(v,0,0,w,h);const q=cues.find(k=>t>=k.s&&t<k.e);if(q)cap(x,q.t,w,h,fs,rtl);
+          const f=new VideoFrame(c,{timestamp:Math.round(t*1e6)});ve.encode(f,{keyFrame:fr++%60==0});f.close();
+          const pc=Math.min(99,Math.round(t/(v.duration||1)*100));prog(pc,'در حال ساخت ویدئو… '+pc+'٪');
+          if(ve.encodeQueueSize>8){pa=true;v.pause()}}
+      }catch(e){return rej(e)}
+      if(!dn)v.requestVideoFrameCallback(cb)};
+    v.onended=()=>{dn=true;res()};v.onerror=()=>rej(new Error('خواندن ویدئو ممکن نشد'));
+    v.requestVideoFrameCallback(cb);v.playbackRate=2;v.play().catch(rej)});
+  await ve.flush();ve.close();
+  if(fe||!vp.length||!ap.length)throw fe||new Error('خروجی خالی');
+  save(webm(vp,ap,w,h,vk[1],ahd,nc,sr),base()+'.webm');
+  prog(100,'ویدئو آماده و ذخیره شد')}
+const fastOK=!!(window.VideoEncoder&&window.AudioEncoder&&window.VideoFrame&&window.AudioData&&'requestVideoFrameCallback' in HTMLVideoElement.prototype);
+const lk=b=>{$('#go').disabled=$('#chg').disabled=$('#dv').disabled=$('#ds').disabled=b};
+$('#dv').onclick=async()=>{
+  if(busy||!cues.length)return;
+  if(!fastOK)return dvRec();
+  busy=true;lk(true);$('#pv').pause();
+  try{await dvFast();busy=false;lk(false)}
+  catch(e){busy=false;lk(false);prog(0,'روش سریع ممکن نشد؛ روش معمولی…');await sleep(800);dvRec()}};
 </script>
 </body>
 </html>
