@@ -90,6 +90,13 @@ textarea{width:100%;border:1px solid var(--l);background:#050a18;color:var(--t);
 
 <div id="ed" hidden>
   <header><h1>ویرایش زیرنویس</h1><div class="sp"></div><button class="x" id="ec" aria-label="بستن">×</button></header>
+  <div id="lx" class="cr" style="display:flex;flex-direction:column;gap:8px">
+  <input id="lq" dir="rtl" placeholder="نام آهنگ و خواننده برای یافتن متن درست" style="direction:rtl;letter-spacing:0;text-align:right;width:100%">
+  <div class="row"><button class="btn g" id="lsr" style="flex:1">جستجوی متن آنلاین</button><button class="btn g" id="lpb" style="flex:1">چسباندن متن</button></div>
+  <textarea id="lta" rows="5" dir="auto" placeholder="متن درست را اینجا بچسبانید" hidden></textarea>
+  <button class="btn" id="lgo" hidden style="flex:none">مقایسه با زیرنویس</button>
+  <div id="lres" style="font-size:13px"></div>
+</div>
   <div id="el"></div>
   <button class="btn" id="sv" style="flex:none">ثبت و بازگشت</button>
   <button class="btn g" id="ok" style="flex:none">تایید و دانلود</button>
@@ -335,7 +342,7 @@ async function dvFast(){
   if(!(v.duration<=900))throw new Error('long');
   const h=Math.round(Math.min(+$('#q').value||v.videoHeight,v.videoHeight)/2)*2,w=Math.round(v.videoWidth*h/v.videoHeight/2)*2;
   let vk=null;
-  for(const k of [['vp8','V_VP8'],['vp09.00.10.08','V_VP9']]){const c={codec:k[0],width:w,height:h,bitrate:Math.min(12e6,Math.max(5e5,w*h*3)),framerate:30,latencyMode:'realtime'};if((await VideoEncoder.isConfigSupported(c)).supported){vk=[c,k[1]];break}}
+  for(const k of [['vp8','V_VP8'],['vp09.00.10.08','V_VP9']]){const c={codec:k[0],width:w,height:h,bitrate:Math.min(8e6,Math.max(5e5,w*h*2)),framerate:24,latencyMode:'realtime'};if((await VideoEncoder.isConfigSupported(c)).supported){vk=[c,k[1]];break}}
   if(!vk)throw new Error('nosupport');
   prog(1,'در حال آماده‌سازی صدا…');
   const ab=await new OfflineAudioContext(2,1,48000).decodeAudioData(await file.arrayBuffer());
@@ -352,14 +359,14 @@ async function dvFast(){
   await new Promise((res,rej)=>{
     const cb=(now,md)=>{
       try{const t=md.mediaTime;
-        if(t>last){last=t;x.drawImage(v,0,0,w,h);const q=cues.find(k=>t>=k.s&&t<k.e);if(q)cap(x,q.t,w,h,fs,rtl);
-          const f=new VideoFrame(c,{timestamp:Math.round(t*1e6)});ve.encode(f,{keyFrame:fr++%60==0});f.close();
+        if(t-last>=.04){last=t;x.drawImage(v,0,0,w,h);const q=cues.find(k=>t>=k.s&&t<k.e);if(q)cap(x,q.t,w,h,fs,rtl);
+          const f=new VideoFrame(c,{timestamp:Math.round(t*1e6)});ve.encode(f,{keyFrame:fr++%72==0});f.close();
           const pc=Math.min(99,Math.round(t/(v.duration||1)*100));prog(pc,'در حال ساخت ویدئو… '+pc+'٪');
           if(ve.encodeQueueSize>8){pa=true;v.pause()}}
       }catch(e){return rej(e)}
       if(!dn)v.requestVideoFrameCallback(cb)};
     v.onended=()=>{dn=true;res()};v.onerror=()=>rej(new Error('خواندن ویدئو ممکن نشد'));
-    v.requestVideoFrameCallback(cb);v.playbackRate=2;v.play().catch(rej)});
+    v.requestVideoFrameCallback(cb);v.playbackRate=3;v.play().catch(rej)});
   await ve.flush();ve.close();
   if(fe||!vp.length||!ap.length)throw fe||new Error('خروجی خالی');
   save(webm(vp,ap,w,h,vk[1],ahd,nc,sr),base()+'.webm');
@@ -372,6 +379,48 @@ $('#dv').onclick=async()=>{
   busy=true;lk(true);$('#pv').pause();
   try{await dvFast();busy=false;lk(false)}
   catch(e){busy=false;lk(false);prog(0,'روش سریع ممکن نشد؛ روش معمولی…');await sleep(800);dvRec()}};
+
+const lxN=t=>t.replace(/[\u064B-\u065F\u0670\u200c\u200d]/g,'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[ۀة]/g,'ه').replace(/[^\p{L}\p{N}\s]/gu,' ').toLowerCase().replace(/\s+/g,'');
+const lxW=t=>t.split(/\s+/).map(w=>({w,n:lxN(w)})).filter(x=>x.n);
+function lxD(a,b){const m=a.length,n=b.length;if(Math.abs(m-n)>3)return Math.max(m,n);let p=Array.from({length:n+1},(_,j)=>j);for(let i=1;i<=m;i++){const q=[i];for(let j=1;j<=n;j++)q[j]=Math.min(p[j]+1,q[j-1]+1,p[j-1]+(a[i-1]==b[j-1]?0:1));p=q}return p[n]}
+const lxS=(a,b)=>a==b?1:1-lxD(a,b)/Math.max(a.length,b.length);
+function lxAlign(cw,lw){
+  const m=cw.length,n=lw.length,G=-.6,W=n+1,S=new Float32Array((m+1)*W),T=new Uint8Array((m+1)*W);
+  for(let i=1;i<=m;i++){S[i*W]=i*G;T[i*W]=1}
+  for(let j=1;j<=n;j++){S[j]=j*G;T[j]=2}
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++){
+    const d=S[(i-1)*W+j-1]+(lxS(cw[i-1].n,lw[j-1].n)-.4)*3,u=S[(i-1)*W+j]+G,l=S[i*W+j-1]+G;
+    if(d>=u&&d>=l){S[i*W+j]=d;T[i*W+j]=0}else if(u>=l){S[i*W+j]=u;T[i*W+j]=1}else{S[i*W+j]=l;T[i*W+j]=2}}
+  const mt=new Array(n).fill(-1);let i=m,j=n;
+  while(i>0||j>0){const t=T[i*W+j];if(i>0&&j>0&&t==0){if(lxS(cw[i-1].n,lw[j-1].n)>=.5)mt[j-1]=cw[i-1].ci;i--;j--}else if(i>0&&(j==0||t==1))i--;else j--}
+  return mt}
+function lxProp(mt,lw,nc){
+  const out=Array.from({length:nc},()=>[]);let cur=-1,run=0;
+  mt.forEach((ci,j)=>{if(ci>=0){cur=ci;run=0;out[ci].push(lw[j].w)}else if(cur>=0){run++;if(run<=3)out[cur].push(lw[j].w)}});
+  return out.map(a=>a.join(' '))}
+function lxCompare(txt){
+  const R=$('#lres'),lw=lxW(txt.replace(/\[[^\]]*\]/g,' ')),cw=[];
+  cues.forEach((c,ci)=>lxW(c.t).forEach(x=>cw.push({n:x.n,ci})));
+  if(lw.length<5||cw.length<5){R.textContent='متن برای مقایسه کافی نیست.';return}
+  const pr=lxProp(lxAlign(cw,lw),lw,cues.length),rows=$('#el').children;let n=0;
+  pr.forEach((q,i)=>{const row=rows[i];if(!row)return;const o=row.querySelector('.lp');if(o)o.remove();
+    if(!q||lxN(q)==lxN(cues[i].t))return;
+    n++;const d=document.createElement('div');d.className='lp';d.style.cssText='margin-top:6px;padding:8px 10px;border:1px dashed #3b82f6;border-radius:10px;font-size:13px;color:#8ab4ff';d.dir='auto';d.textContent='پیشنهاد: '+q+'  (لمس برای جایگزینی)';
+    d.onclick=()=>{cues[i].t=q;row.querySelector('textarea').value=q;d.remove()};row.appendChild(d)});
+  R.innerHTML='';R.append(n?n+' پیشنهاد آماده است؛ زیر هر زیرنویس دیده می‌شود. ':'تفاوتی پیدا نشد. ');
+  if(n){const b=document.createElement('button');b.className='btn';b.style.cssText='flex:none;width:100%;margin-top:6px';b.textContent='پذیرفتن همه پیشنهادها';b.onclick=()=>{[...rows].forEach(r=>{const d=r.querySelector('.lp');if(d)d.click()});R.textContent='پیشنهادها اعمال شد.'};R.appendChild(b)}}
+async function lxSearch(){
+  const q=$('#lq').value.trim(),R=$('#lres');if(!q)return;R.textContent='در حال جستجو…';
+  try{const r=await fx('https://lrclib.net/api/search?q='+encodeURIComponent(q),{},2e4);if(!r||!r.ok)throw 0;
+    const l=((await r.json())||[]).filter(m=>m.plainLyrics||m.syncedLyrics).slice(0,8);
+    if(!l.length){R.textContent='متنی پیدا نشد؛ متن را دستی بچسبانید.';return}
+    R.innerHTML='';
+    l.forEach(m=>{const b=document.createElement('button');b.className='btn g';b.style.cssText='flex:none;width:100%;margin-top:6px';b.textContent=(m.trackName||'')+' — '+(m.artistName||'');
+      b.onclick=()=>{const tx=m.plainLyrics||(m.syncedLyrics||'').replace(/\[[^\]]*\]/g,'');$('#lta').hidden=false;$('#lgo').hidden=false;$('#lta').value=tx;lxCompare(tx)};R.appendChild(b)})}
+  catch(e){R.textContent='دسترسی به منبع آنلاین ممکن نشد؛ متن را دستی بچسبانید.'}}
+$('#lsr').onclick=lxSearch;
+$('#lpb').onclick=()=>{$('#lta').hidden=false;$('#lgo').hidden=false};
+$('#lgo').onclick=()=>lxCompare($('#lta').value);
 </script>
 </body>
 </html>
