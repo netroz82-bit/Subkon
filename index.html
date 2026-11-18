@@ -20,7 +20,7 @@ h1{margin:0;font-size:24px;color:var(--b);font-weight:800}
 .menu{width:44px;height:44px;border:0;background:none;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:10px}
 .menu b{height:3px;border-radius:2px;background:var(--b)}
 main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:14px;overflow:auto}
-#add{width:min(68vw,280px);aspect-ratio:1;border-radius:40px;border:2px dashed var(--b);background:radial-gradient(circle at 50% 40%,#0d2250,#02050d);color:var(--b);font-size:130px;font-weight:200;display:flex;align-items:center;justify-content:center;box-shadow:0 0 50px #2b7fff2e;padding:0 0 12px}
+#add{width:min(46vw,190px);aspect-ratio:1;border-radius:50%;border:2px dashed var(--b);background:radial-gradient(circle at 50% 40%,#0d2250,#02050d);color:var(--b);font-size:90px;font-weight:200;display:flex;align-items:center;justify-content:center;box-shadow:0 0 50px #2b7fff2e;padding:0 0 8px}
 #add:active{transform:scale(.97)}
 #work{width:100%;max-width:520px;display:flex;flex-direction:column;gap:12px;align-self:flex-start;margin:auto}
 .vw{position:relative;background:#050a18;border:1px solid var(--l);border-radius:16px;overflow:hidden}
@@ -91,12 +91,9 @@ textarea{width:100%;border:1px solid var(--l);background:#050a18;color:var(--t);
 <div id="ed" hidden>
   <header><h1>ویرایش زیرنویس</h1><div class="sp"></div><button class="x" id="ec" aria-label="بستن">×</button></header>
   <div id="lx" class="cr" style="display:flex;flex-direction:column;gap:8px">
-  <button class="btn" id="lau" style="flex:none">جستجوی خودکار آنلاین بر اساس متن زیرنویس</button>
-  <button class="btn g" id="lwb" style="flex:none">جستجوی وب بدون API (آزمایشی)</button>
-  <input id="lq" dir="rtl" placeholder="نام آهنگ و خواننده برای یافتن متن درست" style="direction:rtl;letter-spacing:0;text-align:right;width:100%">
-  <div class="row"><button class="btn g" id="lsr" style="flex:1">جستجو با نام آهنگ</button><button class="btn g" id="lpb" style="flex:1">چسباندن متن</button></div>
-  <textarea id="lta" rows="5" dir="auto" placeholder="متن درست را اینجا بچسبانید" hidden></textarea>
-  <button class="btn" id="lgo" hidden style="flex:none">مقایسه با زیرنویس</button>
+  <div style="font-size:13px">افزودن متن زیرنویس به‌صورت دستی</div>
+  <textarea id="lta" rows="5" dir="auto" placeholder="متن درست را اینجا بچسبانید"></textarea>
+  <button class="btn" id="lgo" style="flex:none">مقایسه با زیرنویس</button>
   <div id="lres" style="font-size:13px"></div>
 </div>
   <div id="el"></div>
@@ -186,19 +183,17 @@ async function opus(pcm){
   const out=[oggPage([hd],2,0,0),oggPage([new Uint8Array([79,112,117,115,84,97,103,115,0,0,0,0,0,0,0,0])],0,0,1)];let g=0,seq=2;
   for(let i=0;i<pk.length;i+=50){const x=pk.slice(i,i+50);g+=x.reduce((a,y)=>a+y[1],0);out.push(oggPage(x.map(y=>y[0]),i+50>=pk.length?4:0,g,seq++))}
   return new Blob(out,{type:'audio/ogg'})}
-let LG=null;
-async function ask(parts,tl){
+async function ask(parts){
   const pz=parts.reduce((a,x)=>a+(x.inline_data?x.inline_data.data.length:(x.text||'').length),0);
   let err='',day=false,busy=0,net=0,nf=0;
   for(let rnd=0;rnd<4;rnd++){let wait=0;
     for(let i=0;i<MS.length;i++){const m=MS[i];if(DEAD[m])continue;
-      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts}],...(tl?{tools:tl}:{}),generationConfig:{...(/^gemini-2\.5/.test(m)?{temperature:.1}:{}),...(NT[m]?{}:{thinkingConfig:/^gemini-2\.5/.test(m)?{thinkingBudget:1024}:{thinkingLevel:'low'}})}})},6e4+Math.round(pz/1e6*2e4));
+      const r=await fx(`${B}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts}],generationConfig:{...(/^gemini-2\.5/.test(m)?{temperature:.1}:{}),...(NT[m]?{}:{thinkingConfig:/^gemini-2\.5/.test(m)?{thinkingBudget:1024}:{thinkingLevel:'low'}})}})},6e4+Math.round(pz/1e6*2e4));
       if(!r){net++;err='زمان انتظار به پایان رسید';wait=Math.max(wait,3);continue}
       const j=await r.json().catch(()=>({}));
-      if(r.ok){LG=j.candidates?.[0]?.groundingMetadata||null;return(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('')}
+      if(r.ok)return(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('');
       err=j.error?.message||r.status;
       if(r.status==400&&!NT[m]&&/think/i.test(String(err))){NT[m]=1;i--;continue}
-      if(tl&&(r.status==429||(r.status==400&&/search|ground|tool/i.test(String(err)))))throw Object.assign(new Error('جستجوی گوگل برای این کلید در دسترس نیست'),{tool:1});
       if(r.status==429||r.status==503){const ds=j.error?.details||[];if(JSON.stringify(ds).includes('PerDay')){DEAD[m]=1;day=true;continue}
         if(r.status==503)busy++;
         wait=Math.max(wait,Math.min(25,parseFloat((ds.find(x=>x.retryDelay)||{}).retryDelay)||(r.status==503?4*(rnd+1):5)));continue}
@@ -415,57 +410,7 @@ function lxChips(pr,note){
     d.onclick=()=>{cues[i].t=q;row.querySelector('textarea').value=q;d.remove()};row.appendChild(d)});
   R.innerHTML='';R.append(n?n+' پیشنهاد آماده است؛ زیر هر زیرنویس دیده می‌شود. ':'تفاوتی پیدا نشد. ');if(note){const d=document.createElement('div');d.style.cssText='margin-top:6px;color:#8ab4ff;word-break:break-all';d.textContent=note;R.appendChild(d)}
   if(n){const b=document.createElement('button');b.className='btn';b.style.cssText='flex:none;width:100%;margin-top:6px';b.textContent='پذیرفتن همه پیشنهادها';b.onclick=()=>{[...rows].forEach(r=>{const d=r.querySelector('.lp');if(d)d.click()});R.textContent='پیشنهادها اعمال شد.'};R.appendChild(b)}}
-async function lxSearch(){
-  const q=$('#lq').value.trim(),R=$('#lres');if(!q)return;R.textContent='در حال جستجو…';
-  try{const r=await fx('https://lrclib.net/api/search?q='+encodeURIComponent(q),{},2e4);if(!r||!r.ok)throw 0;
-    const l=((await r.json())||[]).filter(m=>m.plainLyrics||m.syncedLyrics).slice(0,8);
-    if(!l.length){R.textContent='متنی پیدا نشد؛ متن را دستی بچسبانید.';return}
-    R.innerHTML='';
-    l.forEach(m=>{const b=document.createElement('button');b.className='btn g';b.style.cssText='flex:none;width:100%;margin-top:6px';b.textContent=(m.trackName||'')+' — '+(m.artistName||'');
-      b.onclick=()=>{const tx=m.plainLyrics||(m.syncedLyrics||'').replace(/\[[^\]]*\]/g,'');$('#lta').hidden=false;$('#lgo').hidden=false;$('#lta').value=tx;lxCompare(tx)};R.appendChild(b)})}
-  catch(e){R.textContent='دسترسی به منبع آنلاین ممکن نشد؛ متن را دستی بچسبانید.'}}
-$('#lsr').onclick=lxSearch;
-$('#lpb').onclick=()=>{$('#lta').hidden=false;$('#lgo').hidden=false};
 $('#lgo').onclick=()=>lxCompare($('#lta').value);
-
-async function lxAuto(){
-  const R=$('#lres'),sel=cues.map((c,i)=>[i,c.t.replace(/[\r\n|]+/g,' ').trim()]).filter(x=>x[1]);
-  if(sel.length<3){R.textContent='زیرنویس کافی نیست.';return}
-  R.textContent='در حال جستجوی آنلاین… (ممکن است تا یک دقیقه طول بکشد)';
-  const PS=`Below are machine-transcribed subtitle lines (numbered) from a recording; the transcription contains mistakes. Search the web (use Google Search) to identify the song, poem or speech and find its real, correct text, preferably from lyrics or transcript sites in the original language. Then return the corrected text for each line. Rules: keep the same numbering and exactly one output line per input line; only change a line when you found the real text in your search results, otherwise return it unchanged; never invent words; do not merge or split lines and do not move words between lines; write in the original language with correct spelling. Reply ONLY with lines in the format number|text. Last line: SRC|<title - artist, or unknown>.\n`;
-  const PN=`Below are machine-transcribed subtitle lines (numbered) from a recording; the transcription contains mistakes. If you recognize the song, poem or speech and are highly confident of its exact original text, return the corrected text for each line. Rules: keep the same numbering and exactly one output line per input line; change a line only when you are highly confident of the real original words, otherwise return it unchanged; never guess or invent words; do not merge or split lines; keep the original language with correct spelling. Reply ONLY with lines in the format number|text. Last line: SRC|<title - artist, or unknown>.\n`;
-  const pr=new Array(cues.length).fill(''),src=new Set();let name='',md='search';
-  try{
-    for(let o=0;o<sel.length;o+=120){
-      const body=sel.slice(o,o+120).map(x=>(x[0]+1)+'|'+x[1]).join('\n');let tx='';
-      if(md=='search'){try{tx=await ask([{text:PS+body}],[{google_search:{}}])}catch(e){if(!e.tool)throw e;md='nosearch'}}
-      if(md=='nosearch')tx=await ask([{text:PN+body}]);
-      tx.replace(/```/g,'').split('\n').forEach(l=>{const m=l.match(/^\s*(\d+)\s*\|\s*(.+)$/);if(m){const i=+m[1]-1;if(i>=0&&cues[i])pr[i]=m[2].trim()}else{const q=l.match(/^\s*SRC\s*\|\s*(.+)$/i);if(q&&!name)name=q[1].trim()}});
-      if(md=='search')((LG&&LG.groundingChunks)||[]).forEach(c=>{if(c.web&&c.web.uri)src.add(c.web.title||c.web.uri)})}
-  }catch(e){R.textContent='جستجوی آنلاین ناموفق بود: '+String(e.message||e).slice(0,120);return}
-  if(!pr.some(Boolean)){R.textContent='متنی پیدا نشد؛ «جستجوی وب بدون API» یا «چسباندن متن» را امتحان کنید.';return}
-  lxChips(pr,(md=='nosearch'?'جستجوی گوگل برای این کلید باز نیست؛ این پیشنهادها فقط از دانش مدل است و کم‌اعتمادتر است. ':'')+(name&&!/unknown/i.test(name)?'شناسایی‌شده: '+name+'  ':'')+(src.size?'منابع: '+[...src].slice(0,4).join('، '):''))}
-async function lxWeb(){
-  const R=$('#lres'),ls=[...new Set(cues.map(c=>c.t.replace(/[\r\n|]+/g,' ').trim()).filter(t=>t.split(/\s+/).length>=4))].sort((a,b)=>b.length-a.length).slice(0,2);
-  if(!ls.length){R.textContent='زیرنویس کافی نیست.';return}
-  const rd=async(u,ms)=>{const r=await fx('https://r.jina.ai/'+u,{},ms);return r&&r.ok?await r.text():''};
-  const dec=u=>{const m=u.match(/[?&]u=a1([^&]+)/);if(m){try{return atob(m[1].replace(/-/g,'+').replace(/_/g,'/'))}catch(e){}}return u};
-  R.textContent='در حال جستجوی وب…';
-  const se=await rd('https://www.bing.com/search?q='+encodeURIComponent(ls.join(' ')+' متن آهنگ'),3e4);
-  const us=[...new Set([...se.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)].map(m=>dec(m[1])).filter(u=>/^https?:/.test(u)&&!/bing\.com|microsoft\.com|google\.|youtube\.|youtu\.be|aparat\.com|instagram\.com|wikipedia/i.test(u)))].slice(0,4);
-  if(!us.length){R.textContent='از جستجوی وب نتیجه‌ای نگرفتم (سرویس واسط یا موتور جستجو پاسخ نداد).';return}
-  R.textContent='در حال بررسی '+us.length+' صفحه…';
-  const cw=[];cues.forEach((c,ci)=>lxW(c.t).forEach(x=>cw.push({n:x.n,ci})));let best=null;
-  for(const u of us){
-    const tx=await rd(u,3e4);if(!tx)continue;
-    const lw=lxW(tx.replace(/\(https?:[^)]*\)/g,' ').replace(/[\[\]]/g,' ')).slice(0,6000);
-    if(lw.length<20)continue;
-    await sleep(0);const mt=lxAlign(cw,lw),k=mt.filter(x=>x>=0).length;
-    if(!best||k>best.k)best={u,lw,mt,k}}
-  if(!best||best.k<cw.length*.35){R.textContent='متن مطابقی در صفحه‌های پیدا شده نبود؛ «چسباندن متن» را امتحان کنید.';return}
-  lxChips(lxProp(best.mt,best.lw,cues.length),'منبع: '+best.u)}
-$('#lau').onclick=lxAuto;
-$('#lwb').onclick=lxWeb;
 </script>
 </body>
 </html>
